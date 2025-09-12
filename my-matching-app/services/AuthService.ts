@@ -1,4 +1,3 @@
-// controllers/authController.ts
 import { supabase } from '@/services/SupabaseClient';
 
 export const registerUser = async (email: string, password: string) => {
@@ -13,7 +12,3 @@ export const loginUser = async (email: string, password: string) => {
   return data;
 };
 
-export const logoutUser = async () => {
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
-};
