@@ -1,28 +1,23 @@
 // components/AppButton.tsx
 import { Pressable, Text, StyleSheet } from 'react-native';
-import { Colors } from '../constants/Colors';
+import { Colors } from '@/constants/Colors';
+import { useColorScheme } from '@/hooks/useColorScheme';
 
-export default function AppButton({ title, onPress }: { title: string; onPress: () => void }) {
+type Props = {
+  title: string;
+  onPress: () => void;
+};
+
+export default function AppButton({ title, onPress }: Props) {
+  const theme = useColorScheme();
   return (
-    <Pressable style={styles.button} onPress={onPress}>
-      <Text style={styles.text}>{title}</Text>
+    <Pressable onPress={onPress} style={[styles.button, { backgroundColor: Colors[theme].primary }]}>
+      <Text style={[styles.text, { color: Colors[theme].text }]}>{title}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    backgroundColor: Colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    width: '100%',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  text: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  button: { padding: 12, borderRadius: 8, width: '100%', alignItems: 'center', marginVertical: 8 },
+  text: { fontWeight: 'bold' },
 });
