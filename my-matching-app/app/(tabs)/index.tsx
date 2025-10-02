@@ -1,9 +1,6 @@
-// app/home/index.tsx
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { supabase } from '@/services/SupabaseClient';
-import { loginUser } from '@/services/AuthService';
 
 export default function AppHomeScreen() {
   const theme = useColorScheme();
@@ -13,7 +10,7 @@ export default function AppHomeScreen() {
       <Text style={[styles.title, { color: Colors[theme].text }]}>
         ようこそ、マッチングアプリへ！
       </Text>
-      {/* ここにアプリ本体のコンテンツ */}
+      {/* ここにホーム画面コンテンツ */}
     </View>
   );
 }
