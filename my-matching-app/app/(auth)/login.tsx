@@ -1,3 +1,4 @@
+// app/(auth)/login.tsx
 import { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
 import AppButton from '@/components/AppButton';
@@ -16,7 +17,7 @@ export default function LoginScreen() {
     try {
       const res = await loginUser(email, password);
       Alert.alert('ログイン成功', `ユーザー: ${res.user?.email}`);
-      router.push('/(home)'); // 遷移先を実際のフォルダ構成に合わせて調整
+      router.replace('/(tabs)');
     } catch (err: any) {
       Alert.alert('エラー', err.message);
     }
@@ -27,18 +28,27 @@ export default function LoginScreen() {
       <Text style={[styles.title, { color: Colors[theme].text }]}>ログイン</Text>
       <TextInput
         placeholder="メールアドレス"
+        placeholderTextColor={theme === 'dark' ? '#aaa' : '#555'}
         value={email}
         onChangeText={setEmail}
-        style={styles.input}
+        style={[styles.input, { color: Colors[theme].text }]}
       />
       <TextInput
         placeholder="パスワード"
+        placeholderTextColor={theme === 'dark' ? '#aaa' : '#555'}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        style={styles.input}
+        style={[styles.input, { color: Colors[theme].text }]}
       />
       <AppButton title="ログイン" onPress={handleLogin} />
+
+      <Text
+        style={[styles.link, { color: Colors[theme].primary }]}
+        onPress={() => router.push('/(auth)/register')}
+      >
+        新規登録はこちら
+      </Text>
     </View>
   );
 }
@@ -46,5 +56,17 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16 },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
-  input: { width: '100%', borderWidth: 1, borderColor: '#ccc', padding: 10, marginBottom: 12, borderRadius: 6 },
+  input: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 10,
+    marginBottom: 12,
+    borderRadius: 6,
+  },
+  link: {
+    marginTop: 16,
+    textDecorationLine: 'underline',
+    fontSize: 16,
+  },
 });
