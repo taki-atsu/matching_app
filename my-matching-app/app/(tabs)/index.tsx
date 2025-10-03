@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { StyleSheet, Text, View } from 'react-native';
 
 export default function AppHomeScreen() {
   const theme = useColorScheme();
