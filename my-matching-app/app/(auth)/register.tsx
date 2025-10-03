@@ -1,11 +1,11 @@
 // app/(auth)/register.tsx
-import { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
 import AppButton from '@/components/AppButton';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { supabase } from '@/services/SupabaseClient'; // 👈 これを追加
 import { useRouter } from 'expo-router';
-import { registerUser } from '@/services/AuthService';
+import { useState } from 'react';
+import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
 
 export default function RegisterScreen() {
   const theme = useColorScheme();
@@ -16,14 +16,27 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     try {
-      const res = await registerUser(email, password, username);
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { username }
+        }
+      });
 
+      if (error) throw error;
+
+      // 成功時にメール確認を促す
       Alert.alert(
-        '登録成功',
-        '確認メールを送信しました。メールを確認してからログインしてください。'
+        '仮登録完了',
+        '確認メールを送信しました。\nメールに記載されたリンクをクリックして、本登録を完了してください。',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.replace('/(auth)/login')
+          }
+        ]
       );
-
-      router.replace('/(auth)/login');
     } catch (err: any) {
       Alert.alert('エラー', err.message);
     }
@@ -38,6 +51,7 @@ export default function RegisterScreen() {
         value={username}
         onChangeText={setUsername}
         style={[styles.input, { color: Colors[theme].text }]}
+        nativeID="username"
       />
       <TextInput
         placeholder="メールアドレス"
@@ -45,6 +59,9 @@ export default function RegisterScreen() {
         value={email}
         onChangeText={setEmail}
         style={[styles.input, { color: Colors[theme].text }]}
+        autoCapitalize="none"
+        keyboardType="email-address"
+        nativeID="email"
       />
       <TextInput
         placeholder="パスワード"
@@ -53,6 +70,7 @@ export default function RegisterScreen() {
         onChangeText={setPassword}
         secureTextEntry
         style={[styles.input, { color: Colors[theme].text }]}
+        nativeID="password"
       />
       <AppButton title="登録" onPress={handleRegister} />
     </View>

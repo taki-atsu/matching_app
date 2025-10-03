@@ -1,7 +1,7 @@
-import { Tabs } from "expo-router";
-import { useColorScheme } from "@/hooks/useColorScheme";
 import { Colors } from "@/constants/Colors";
+import { useColorScheme } from "@/hooks/useColorScheme";
 import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
 
 export default function TabsLayout() {
   const theme = useColorScheme();
@@ -12,7 +12,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: Colors[theme].primary
       }}
-      initialRouteName="index" // ホーム画面を初期タブにする
+      initialRouteName="index"
     >
       <Tabs.Screen
         name="index"
@@ -20,6 +20,15 @@ export default function TabsLayout() {
           title: "ホーム",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
+          )
+        }}
+      />
+      <Tabs.Screen
+        name="discover"
+        options={{
+          title: "発見",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="search" size={size} color={color} />
           )
         }}
       />
