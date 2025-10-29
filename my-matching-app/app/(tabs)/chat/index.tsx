@@ -4,12 +4,14 @@ import { supabase } from '@/services/SupabaseClient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type ChatItem = {
   id: string;
   otherUserId: string;
   username: string;
+  profileImageUrl: string | null;
   lastMessage?: string;
   lastMessageTime?: string;
   unreadCount: number;
@@ -19,6 +21,7 @@ type ChatItem = {
 export default function ChatListScreen() {
   const theme = useColorScheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [matchedChats, setMatchedChats] = useState<ChatItem[]>([]);
   const [receivedChats, setReceivedChats] = useState<ChatItem[]>([]);
   const [sentChats, setSentChats] = useState<ChatItem[]>([]);
@@ -50,6 +53,29 @@ export default function ChatListScreen() {
   const fetchCurrentUser = async () => {
     const { data } = await supabase.auth.getUser();
     setUserId(data.user?.id ?? null);
+  };
+
+  // プロフィール画像の1枚目を取得する関数
+  const fetchProfileImage = async (targetUserId: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('profile_images')
+        .select('image_url')
+        .eq('user_id', targetUserId)
+        .order('display_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching profile image:', error);
+        return null;
+      }
+
+      return data?.image_url || null;
+    } catch (error) {
+      console.error('Error fetching profile image:', error);
+      return null;
+    }
   };
 
   const fetchChats = async () => {
@@ -95,6 +121,9 @@ export default function ChatListScreen() {
           .eq('id', otherUserId)
           .single();
 
+        // プロフィール画像取得
+        const profileImageUrl = await fetchProfileImage(otherUserId);
+
         // 最終メッセージ取得
         const { data: lastMsg } = await supabase
           .from('messages')
@@ -131,6 +160,7 @@ export default function ChatListScreen() {
           id: otherUserId,
           otherUserId,
           username: profile?.username || 'ユーザー',
+          profileImageUrl,
           lastMessage: lastMsg?.content,
           lastMessageTime: lastMsg?.created_at,
           unreadCount: unreadCount || 0,
@@ -159,6 +189,10 @@ export default function ChatListScreen() {
     router.push(`/(tabs)/chat/${chatId}` as any);
   };
 
+  const handleProfilePress = (userId: string) => {
+    router.push(`/profile/${userId}` as any);
+  };
+
   const renderItem = ({ item }: { item: ChatItem }) => (
     <Pressable
       style={[
@@ -168,10 +202,19 @@ export default function ChatListScreen() {
       ]}
       onPress={() => handleChatPress(item.id)}
     >
-      <View style={[styles.avatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
-        <Ionicons name="person" size={32} color="#999" />
-      </View>
-      <View style={styles.chatInfo}>
+      <Pressable onPress={() => handleProfilePress(item.otherUserId)}>
+        {item.profileImageUrl ? (
+          <Image source={{ uri: item.profileImageUrl }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
+            <Ionicons name="person" size={32} color="#999" />
+          </View>
+        )}
+      </Pressable>
+      <Pressable 
+        style={styles.chatInfo}
+        onPress={() => handleProfilePress(item.otherUserId)}
+      >
         <View style={styles.headerRow}>
           <Text style={[styles.username, { color: Colors[theme].text }]}>
             {item.username}
@@ -192,7 +235,7 @@ export default function ChatListScreen() {
             {item.lastMessage.slice(0, 20)}{item.lastMessage.length > 20 ? '...' : ''}
           </Text>
         )}
-      </View>
+      </Pressable>
       {item.unreadCount > 0 && (
         <View style={[styles.unreadBadge, { backgroundColor: Colors[theme].primary }]}>
           <Text style={styles.unreadText}>{item.unreadCount}</Text>
@@ -202,12 +245,8 @@ export default function ChatListScreen() {
     </Pressable>
   );
 
-  const totalUnread = [...matchedChats, ...receivedChats, ...sentChats].reduce(
-    (sum, chat) => sum + chat.unreadCount, 0
-  );
-
   return (
-    <View style={[styles.container, { backgroundColor: Colors[theme].background }]}>
+    <View style={[styles.container, { backgroundColor: Colors[theme].background, paddingTop: insets.top }]}>
       {/* タブ */}
       <View style={[styles.tabContainer, { backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff' }]}>
         <Pressable
