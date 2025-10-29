@@ -1,11 +1,10 @@
-// app/(auth)/login.tsx
-import { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
 import AppButton from '@/components/AppButton';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { useRouter } from 'expo-router';
 import { loginUser } from '@/services/AuthService';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
 
 export default function LoginScreen() {
   const theme = useColorScheme();
@@ -28,18 +27,36 @@ export default function LoginScreen() {
       <Text style={[styles.title, { color: Colors[theme].text }]}>ログイン</Text>
       <TextInput
         placeholder="メールアドレス"
-        placeholderTextColor={theme === 'dark' ? '#aaa' : '#555'}
+        placeholderTextColor={theme === 'dark' ? '#888' : '#999'}
         value={email}
         onChangeText={setEmail}
-        style={[styles.input, { color: Colors[theme].text }]}
+        style={[
+          styles.input, 
+          { 
+            color: Colors[theme].text,
+            borderColor: theme === 'dark' ? '#555' : '#ccc',
+            backgroundColor: theme === 'dark' ? '#2a2a2a' : '#fff'
+          }
+        ]}
+        autoCapitalize="none"
+        keyboardType="email-address"
+        nativeID="email"
       />
       <TextInput
         placeholder="パスワード"
-        placeholderTextColor={theme === 'dark' ? '#aaa' : '#555'}
+        placeholderTextColor={theme === 'dark' ? '#888' : '#999'}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        style={[styles.input, { color: Colors[theme].text }]}
+        style={[
+          styles.input, 
+          { 
+            color: Colors[theme].text,
+            borderColor: theme === 'dark' ? '#555' : '#ccc',
+            backgroundColor: theme === 'dark' ? '#2a2a2a' : '#fff'
+          }
+        ]}
+        nativeID="password"
       />
       <AppButton title="ログイン" onPress={handleLogin} />
 
@@ -59,7 +76,6 @@ const styles = StyleSheet.create({
   input: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#ccc',
     padding: 10,
     marginBottom: 12,
     borderRadius: 6,

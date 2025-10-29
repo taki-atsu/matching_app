@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Stats = {
   receivedLikes: number;
@@ -15,6 +16,7 @@ type Stats = {
 export default function AppHomeScreen() {
   const theme = useColorScheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [stats, setStats] = useState<Stats>({ receivedLikes: 0, unreadChats: 0, newMatches: 0 });
   const [username, setUsername] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
@@ -31,24 +33,44 @@ export default function AppHomeScreen() {
     setUserId(uid);
 
     if (uid) {
-      // 最終ログイン時刻を取得・更新
-      const storedLastLogin = localStorage.getItem(`last_login_${uid}`);
+      // 最終ログイン時刻を取得・更新（モバイル対応）
+      let storedLastLogin: string | null = null;
+      
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          storedLastLogin = localStorage.getItem(`last_login_${uid}`);
+          localStorage.setItem(`last_login_${uid}`, new Date().toISOString());
+        }
+      } catch (error) {
+        console.log('localStorage not available, skipping last login tracking');
+      }
+      
       setLastLoginTime(storedLastLogin);
-      localStorage.setItem(`last_login_${uid}`, new Date().toISOString());
 
-      await fetchStats(uid, storedLastLogin);
       await fetchUsername(uid);
+      await fetchStats(uid, storedLastLogin);
     }
   };
 
   const fetchUsername = async (uid: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('id', uid)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', uid)
+        .single();
 
-    setUsername(data?.username || 'ユーザー');
+      if (error) {
+        console.error('Username fetch error:', error);
+        setUsername('ユーザー');
+        return;
+      }
+
+      setUsername(data?.username || 'ユーザー');
+    } catch (error) {
+      console.error('Username fetch error:', error);
+      setUsername('ユーザー');
+    }
   };
 
   const fetchStats = async (uid: string, lastLogin: string | null) => {
@@ -127,6 +149,7 @@ export default function AppHomeScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     if (userId) {
+      await fetchUsername(userId);
       await fetchStats(userId, lastLoginTime);
     }
   };
@@ -159,6 +182,7 @@ export default function AppHomeScreen() {
   return (
     <ScrollView 
       style={[styles.container, { backgroundColor: Colors[theme].background }]}
+      contentContainerStyle={{ paddingTop: insets.top }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
@@ -247,7 +271,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 24,
-    paddingTop: 32,
+    paddingTop: 16,
   },
   greeting: {
     fontSize: 28,

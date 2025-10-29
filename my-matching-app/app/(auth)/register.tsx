@@ -1,8 +1,7 @@
-// app/(auth)/register.tsx
 import AppButton from '@/components/AppButton';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { supabase } from '@/services/SupabaseClient'; // 👈 これを追加
+import { supabase } from '@/services/SupabaseClient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -26,7 +25,6 @@ export default function RegisterScreen() {
 
       if (error) throw error;
 
-      // 成功時にメール確認を促す
       Alert.alert(
         '仮登録完了',
         '確認メールを送信しました。\nメールに記載されたリンクをクリックして、本登録を完了してください。',
@@ -47,32 +45,59 @@ export default function RegisterScreen() {
       <Text style={[styles.title, { color: Colors[theme].text }]}>ユーザー登録</Text>
       <TextInput
         placeholder="ユーザー名"
-        placeholderTextColor={theme === 'dark' ? '#aaa' : '#555'}
+        placeholderTextColor={theme === 'dark' ? '#888' : '#999'}
         value={username}
         onChangeText={setUsername}
-        style={[styles.input, { color: Colors[theme].text }]}
+        style={[
+          styles.input, 
+          { 
+            color: Colors[theme].text,
+            borderColor: theme === 'dark' ? '#555' : '#ccc',
+            backgroundColor: theme === 'dark' ? '#2a2a2a' : '#fff'
+          }
+        ]}
         nativeID="username"
       />
       <TextInput
         placeholder="メールアドレス"
-        placeholderTextColor={theme === 'dark' ? '#aaa' : '#555'}
+        placeholderTextColor={theme === 'dark' ? '#888' : '#999'}
         value={email}
         onChangeText={setEmail}
-        style={[styles.input, { color: Colors[theme].text }]}
+        style={[
+          styles.input, 
+          { 
+            color: Colors[theme].text,
+            borderColor: theme === 'dark' ? '#555' : '#ccc',
+            backgroundColor: theme === 'dark' ? '#2a2a2a' : '#fff'
+          }
+        ]}
         autoCapitalize="none"
         keyboardType="email-address"
         nativeID="email"
       />
       <TextInput
         placeholder="パスワード"
-        placeholderTextColor={theme === 'dark' ? '#aaa' : '#555'}
+        placeholderTextColor={theme === 'dark' ? '#888' : '#999'}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        style={[styles.input, { color: Colors[theme].text }]}
+        style={[
+          styles.input, 
+          { 
+            color: Colors[theme].text,
+            borderColor: theme === 'dark' ? '#555' : '#ccc',
+            backgroundColor: theme === 'dark' ? '#2a2a2a' : '#fff'
+          }
+        ]}
         nativeID="password"
       />
       <AppButton title="登録" onPress={handleRegister} />
+      <Text
+        style={[styles.link, { color: Colors[theme].primary }]}
+        onPress={() => router.push('/(auth)/login')}
+      >
+        既にアカウントをお持ちの方はこちら
+      </Text>
     </View>
   );
 }
@@ -83,9 +108,13 @@ const styles = StyleSheet.create({
   input: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#ccc',
     padding: 10,
     marginBottom: 12,
     borderRadius: 6,
+  },
+  link: {  // 👈 追加
+    marginTop: 16,
+    textDecorationLine: 'underline',
+    fontSize: 16,
   },
 });

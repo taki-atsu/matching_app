@@ -4,7 +4,8 @@ import { supabase } from '@/services/SupabaseClient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Profile = {
   id: string;
@@ -17,11 +18,13 @@ type Profile = {
   age: number | null;
   gender: string | null;
   location: string | null;
+  profileImageUrl?: string | null;
 };
 
 export default function DiscoverScreen() {
   const theme = useColorScheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [newUsers, setNewUsers] = useState<Profile[]>([]);
   const [receivedLikes, setReceivedLikes] = useState<Profile[]>([]);
   const [sentLikes, setSentLikes] = useState<Profile[]>([]);
@@ -47,6 +50,28 @@ export default function DiscoverScreen() {
     setUserId(data.user?.id ?? null);
   };
 
+  const fetchProfileImage = async (targetUserId: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('profile_images')
+        .select('image_url')  // image_pathではなくimage_url
+        .eq('user_id', targetUserId)
+        .order('display_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching profile image:', error);
+        return null;
+      }
+
+      return data?.image_url || null;  // 既にURLなのでそのまま返す
+    } catch (error) {
+      console.error('Error fetching profile image:', error);
+      return null;
+    }
+  };
+
   const fetchAllData = async () => {
     await Promise.all([
       fetchNewUsers(),
@@ -67,7 +92,6 @@ export default function DiscoverScreen() {
     if (!userId) return;
 
     try {
-      // 自分がいいねしたユーザーIDを取得（これらは除外）
       const { data: myLikes } = await supabase
         .from('likes')
         .select('to_user_id')
@@ -88,7 +112,14 @@ export default function DiscoverScreen() {
 
       if (error) throw error;
 
-      setNewUsers(data || []);
+      const usersWithImages = await Promise.all(
+        (data || []).map(async (user) => ({
+          ...user,
+          profileImageUrl: await fetchProfileImage(user.id)
+        }))
+      );
+
+      setNewUsers(usersWithImages);
       setCurrentIndex(0);
     } catch (err: any) {
       console.error('新規ユーザー取得エラー:', err.message);
@@ -111,7 +142,6 @@ export default function DiscoverScreen() {
         return;
       }
 
-      // 自分からのいいねをチェック
       const { data: myLikes } = await supabase
         .from('likes')
         .select('to_user_id')
@@ -119,8 +149,6 @@ export default function DiscoverScreen() {
         .in('to_user_id', likeUserIds);
 
       const mutualIds = myLikes?.map(l => l.to_user_id) || [];
-
-      // マッチしていないユーザーのみ
       const unmatchedIds = likeUserIds.filter(id => !mutualIds.includes(id));
 
       if (unmatchedIds.length === 0) {
@@ -133,7 +161,14 @@ export default function DiscoverScreen() {
         .select('*')
         .in('id', unmatchedIds);
 
-      setReceivedLikes(profiles || []);
+      const profilesWithImages = await Promise.all(
+        (profiles || []).map(async (user) => ({
+          ...user,
+          profileImageUrl: await fetchProfileImage(user.id)
+        }))
+      );
+
+      setReceivedLikes(profilesWithImages);
     } catch (err: any) {
       console.error('受信いいね取得エラー:', err.message);
     }
@@ -155,7 +190,6 @@ export default function DiscoverScreen() {
         return;
       }
 
-      // 相手からのいいねをチェック
       const { data: theirLikes } = await supabase
         .from('likes')
         .select('from_user_id')
@@ -163,8 +197,6 @@ export default function DiscoverScreen() {
         .in('from_user_id', likeUserIds);
 
       const mutualIds = theirLikes?.map(l => l.from_user_id) || [];
-
-      // マッチしていないユーザーのみ
       const unmatchedIds = likeUserIds.filter(id => !mutualIds.includes(id));
 
       if (unmatchedIds.length === 0) {
@@ -177,7 +209,14 @@ export default function DiscoverScreen() {
         .select('*')
         .in('id', unmatchedIds);
 
-      setSentLikes(profiles || []);
+      const profilesWithImages = await Promise.all(
+        (profiles || []).map(async (user) => ({
+          ...user,
+          profileImageUrl: await fetchProfileImage(user.id)
+        }))
+      );
+
+      setSentLikes(profilesWithImages);
     } catch (err: any) {
       console.error('送信いいね取得エラー:', err.message);
     }
@@ -217,77 +256,80 @@ export default function DiscoverScreen() {
         .select('*')
         .in('id', matchedIds);
 
-      setMatches(profiles || []);
+      const profilesWithImages = await Promise.all(
+        (profiles || []).map(async (user) => ({
+          ...user,
+          profileImageUrl: await fetchProfileImage(user.id)
+        }))
+      );
+
+      setMatches(profilesWithImages);
     } catch (err: any) {
       console.error('マッチ取得エラー:', err.message);
     }
   };
 
   const handleLike = async (targetUserId?: string) => {
-  console.log('👍 handleLike called', { userId, targetUserId, currentIndex });
-  
-  if (!userId) {
-    console.log('❌ userId is null');
-    return;
-  }
-
-  const targetId = targetUserId || newUsers[currentIndex]?.id;
-  console.log('🎯 Target ID:', targetId);
-  
-  if (!targetId) {
-    console.log('❌ targetId is null');
-    return;
-  }
-
-  try {
-    console.log('📤 Sending like...');
-    const { error } = await supabase
-      .from('likes')
-      .insert([{ from_user_id: userId, to_user_id: targetId }]);
-
-    if (error) {
-      console.log('❌ Insert error:', error);
-      throw error;
+    console.log('👍 handleLike called', { userId, targetUserId, currentIndex });
+    
+    if (!userId) {
+      console.log('❌ userId is null');
+      return;
     }
 
-    console.log('✅ Like inserted successfully');
-
-    // マッチングチェック
-    console.log('🔍 Checking for match...');
-    const { data: mutualLike } = await supabase
-      .from('likes')
-      .select('*')
-      .eq('from_user_id', targetId)
-      .eq('to_user_id', userId)
-      .single();
-
-    console.log('🔍 Match result:', mutualLike);
-
-    const targetUser = newUsers.find(u => u.id === targetId) || 
-                       receivedLikes.find(u => u.id === targetId);
-
-    if (mutualLike && targetUser) {
-      console.log('🎉 Match found!');
-      Alert.alert('マッチング成立', `${targetUser.username}さんとマッチングしました`);
+    const targetId = targetUserId || newUsers[currentIndex]?.id;
+    console.log('🎯 Target ID:', targetId);
+    
+    if (!targetId) {
+      console.log('❌ targetId is null');
+      return;
     }
 
-    // データを再取得
-    console.log('🔄 Fetching updated data...');
-    await fetchAllData();
-    console.log('✅ Data refreshed');
+    try {
+      console.log('📤 Sending like...');
+      const { error } = await supabase
+        .from('likes')
+        .insert([{ from_user_id: userId, to_user_id: targetId }]);
 
-  } catch (err: any) {
-    console.log('❌ Error in handleLike:', err);
-    Alert.alert('エラー', err.message);
-  }
-};
+      if (error) {
+        console.log('❌ Insert error:', error);
+        throw error;
+      }
+
+      console.log('✅ Like inserted successfully');
+
+      const { data: mutualLike } = await supabase
+        .from('likes')
+        .select('*')
+        .eq('from_user_id', targetId)
+        .eq('to_user_id', userId)
+        .single();
+
+      console.log('🔍 Match result:', mutualLike);
+
+      const targetUser = newUsers.find(u => u.id === targetId) || 
+                         receivedLikes.find(u => u.id === targetId);
+
+      if (mutualLike && targetUser) {
+        console.log('🎉 Match found!');
+        Alert.alert('マッチング成立', `${targetUser.username}さんとマッチングしました`);
+      }
+
+      console.log('🔄 Fetching updated data...');
+      await fetchAllData();
+      console.log('✅ Data refreshed');
+
+    } catch (err: any) {
+      console.log('❌ Error in handleLike:', err);
+      Alert.alert('エラー', err.message);
+    }
+  };
 
   const handlePass = async (targetUserId?: string, isFromReceived: boolean = false) => {
     const targetId = targetUserId || newUsers[currentIndex]?.id;
     if (!targetId || !userId) return;
 
     if (isFromReceived) {
-      // いいね(受)からのパス：相手からのいいねを削除
       try {
         const { error } = await supabase
           .from('likes')
@@ -297,13 +339,11 @@ export default function DiscoverScreen() {
 
         if (error) throw error;
 
-        // データ再取得
         await fetchAllData();
       } catch (err: any) {
         Alert.alert('エラー', err.message);
       }
     } else {
-      // 発見からのパス：表示から削除のみ
       setNewUsers(prev => prev.filter(u => u.id !== targetId));
     }
   };
@@ -359,7 +399,7 @@ export default function DiscoverScreen() {
   return (
     <View style={[styles.container, { backgroundColor: Colors[theme].background }]}>
       {/* タブ */}
-      <View style={[styles.tabContainer, { backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff' }]}>
+      <View style={[styles.tabContainer, { backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff', paddingTop: insets.top }]}>
         <Pressable
           style={[styles.tab, activeTab === 'discover' && { borderBottomColor: Colors[theme].primary, borderBottomWidth: 2 }]}
           onPress={() => setActiveTab('discover')}
@@ -411,9 +451,17 @@ export default function DiscoverScreen() {
         ) : (
           <>
             <ScrollView style={styles.cardContainer}>
-              <View style={[styles.imageContainer, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
-                <Ionicons name="person" size={100} color="#999" />
-              </View>
+              {newUsers[currentIndex].profileImageUrl ? (
+                <Image 
+                  source={{ uri: newUsers[currentIndex].profileImageUrl }} 
+                  style={styles.profileImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.imageContainer, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
+                  <Ionicons name="person" size={100} color="#999" />
+                </View>
+              )}
 
               <View style={[styles.infoContainer, { backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff' }]}>
                 <Text style={[styles.username, { color: Colors[theme].text }]}>
@@ -500,10 +548,26 @@ export default function DiscoverScreen() {
               style={[styles.userCard, { backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff' }]}
               onPress={() => handleOpenProfile(item)}
             >
-              <View style={[styles.avatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
-                <Ionicons name="person" size={40} color="#999" />
-              </View>
-              <View style={styles.userInfo}>
+              <Pressable onPress={() => handleOpenProfile(item)}>
+                {item.profileImageUrl ? (
+                  <View style={styles.avatarWrapper}>
+                    <Image source={{ uri: item.profileImageUrl }} style={styles.avatar} />
+                    <View style={styles.likeBadgeSmall}>
+                      <Ionicons name="heart" size={12} color="#fff" />
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.avatarWrapper}>
+                    <View style={[styles.avatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
+                      <Ionicons name="person" size={40} color="#999" />
+                    </View>
+                    <View style={styles.likeBadgeSmall}>
+                      <Ionicons name="heart" size={12} color="#fff" />
+                    </View>
+                  </View>
+                )}
+              </Pressable>
+              <Pressable style={styles.userInfo} onPress={() => handleOpenProfile(item)}>
                 <Text style={[styles.userName, { color: Colors[theme].text }]}>
                   {item.username}
                   {item.age && `, ${item.age}`}
@@ -513,7 +577,7 @@ export default function DiscoverScreen() {
                     {item.location}
                   </Text>
                 )}
-              </View>
+              </Pressable>
               <View style={styles.actionsRow}>
                 <Pressable
                   style={[styles.smallActionButton, { borderColor: '#ff3b30' }]}
@@ -559,10 +623,16 @@ export default function DiscoverScreen() {
               style={[styles.userCard, { backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff' }]}
               onPress={() => handleOpenProfile(item)}
             >
-              <View style={[styles.avatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
-                <Ionicons name="person" size={40} color="#999" />
-              </View>
-              <View style={styles.userInfo}>
+              <Pressable onPress={() => handleOpenProfile(item)}>
+                {item.profileImageUrl ? (
+                  <Image source={{ uri: item.profileImageUrl }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
+                    <Ionicons name="person" size={40} color="#999" />
+                  </View>
+                )}
+              </Pressable>
+              <Pressable style={styles.userInfo} onPress={() => handleOpenProfile(item)}>
                 <Text style={[styles.userName, { color: Colors[theme].text }]}>
                   {item.username}
                   {item.age && `, ${item.age}`}
@@ -572,7 +642,7 @@ export default function DiscoverScreen() {
                     {item.location}
                   </Text>
                 )}
-              </View>
+              </Pressable>
               <View style={styles.actionsRow}>
                 <Pressable
                   style={[styles.iconButton, { backgroundColor: Colors[theme].primary }]}
@@ -618,10 +688,16 @@ export default function DiscoverScreen() {
               style={[styles.userCard, { backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff' }]}
               onPress={() => handleOpenProfile(item)}
             >
-              <View style={[styles.avatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
-                <Ionicons name="person" size={40} color="#999" />
-              </View>
-              <View style={styles.userInfo}>
+              <Pressable onPress={() => handleOpenProfile(item)}>
+                {item.profileImageUrl ? (
+                  <Image source={{ uri: item.profileImageUrl }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
+                    <Ionicons name="person" size={40} color="#999" />
+                  </View>
+                )}
+              </Pressable>
+              <Pressable style={styles.userInfo} onPress={() => handleOpenProfile(item)}>
                 <Text style={[styles.userName, { color: Colors[theme].text }]}>
                   {item.username}
                   {item.age && `, ${item.age}`}
@@ -631,7 +707,7 @@ export default function DiscoverScreen() {
                     {item.location}
                   </Text>
                 )}
-              </View>
+              </Pressable>
               <Pressable
                 style={[styles.iconButton, { backgroundColor: Colors[theme].primary }]}
                 onPress={(e) => {
@@ -662,7 +738,9 @@ export default function DiscoverScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { 
+    flex: 1 
+  },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -686,6 +764,12 @@ const styles = StyleSheet.create({
   cardContainer: {
     flex: 1,
     padding: 16,
+  },
+  profileImage: {
+    width: '100%',
+    height: 400,
+    borderRadius: 12,
+    marginBottom: 16,
   },
   imageContainer: {
     width: '100%',
@@ -711,7 +795,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
     gap: 4,
   },
-  infoText: { fontSize: 14 },
+  infoText: { 
+    fontSize: 14 
+  },
   section: {
     padding: 16,
     borderRadius: 12,
@@ -786,15 +872,33 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
   },
+  avatarWrapper: {
+    position: 'relative',
+    marginRight: 12,
+  },
   avatar: {
     width: 60,
     height: 60,
     borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
-  userInfo: { flex: 1 },
+  likeBadgeSmall: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#ff9500',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#1a1a1a',
+  },
+  userInfo: { 
+    flex: 1 
+  },
   userName: {
     fontSize: 16,
     fontWeight: 'bold',

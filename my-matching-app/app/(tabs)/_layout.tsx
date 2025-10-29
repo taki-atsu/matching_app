@@ -10,7 +10,12 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors[theme].primary
+        tabBarActiveTintColor: Colors[theme].primary,
+        tabBarStyle: {
+          backgroundColor: Colors[theme].background,
+          borderTopColor: theme === 'dark' ? '#333' : '#eee',
+        },
+        tabBarInactiveTintColor: theme === 'dark' ? '#888' : '#999',
       }}
       initialRouteName="index"
     >

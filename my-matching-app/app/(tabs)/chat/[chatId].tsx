@@ -2,9 +2,10 @@ import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { supabase } from '@/services/SupabaseClient';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 type Message = {
   id: string;
@@ -13,6 +14,7 @@ type Message = {
   sender_id: string;
   created_at: string;
   is_read: boolean;
+  image_url?: string | null;
 };
 
 export default function ChatRoomScreen() {
@@ -23,8 +25,10 @@ export default function ChatRoomScreen() {
   const [input, setInput] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [otherUsername, setOtherUsername] = useState('');
+  const [otherUserImageUrl, setOtherUserImageUrl] = useState<string | null>(null);
   const [actualChatId, setActualChatId] = useState<string | null>(null);
   const [matchStatus, setMatchStatus] = useState<'matched' | 'received' | 'sent' | 'none'>('none');
+  const [uploading, setUploading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -56,7 +60,6 @@ export default function ChatRoomScreen() {
 
     fetchMessages();
 
-    // メッセージのリアルタイム購読
     const channel = supabase
       .channel(`messages:${actualChatId}`)
       .on(
@@ -71,21 +74,17 @@ export default function ChatRoomScreen() {
           console.log('📨 New message received:', payload);
           const newMessage = payload.new as Message;
           
-          // 👇 一時メッセージと重複しないようにチェック
           setMessages((prev) => {
-            // 既に存在する場合は追加しない
             const exists = prev.some(m => m.id === newMessage.id);
             if (exists) {
               console.log('⚠️ Message already exists, skipping');
               return prev;
             }
             
-            // 一時メッセージを本物に置き換え
             const withoutTemp = prev.filter(m => !m.id.startsWith('temp-'));
             return [...withoutTemp, newMessage];
           });
           
-          // 自分宛のメッセージを既読にする
           if (newMessage.sender_id !== userId) {
             markAsRead(newMessage.id);
           }
@@ -105,11 +104,32 @@ export default function ChatRoomScreen() {
     };
   }, [actualChatId, userId]);
 
+  const fetchProfileImage = async (targetUserId: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('profile_images')
+        .select('image_url')
+        .eq('user_id', targetUserId)
+        .order('display_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching profile image:', error);
+        return null;
+      }
+
+      return data?.image_url || null;
+    } catch (error) {
+      console.error('Error fetching profile image:', error);
+      return null;
+    }
+  };
+
   const initializeChat = async () => {
     if (!userId || !chatId) return;
 
     try {
-      // 相手のユーザー情報を取得
       const { data: profile } = await supabase
         .from('profiles')
         .select('username')
@@ -118,7 +138,9 @@ export default function ChatRoomScreen() {
 
       setOtherUsername(profile?.username || 'ユーザー');
 
-      // マッチング状態を確認
+      const imageUrl = await fetchProfileImage(chatId);
+      setOtherUserImageUrl(imageUrl);
+
       const { data: myLike } = await supabase
         .from('likes')
         .select('*')
@@ -143,7 +165,6 @@ export default function ChatRoomScreen() {
         setMatchStatus('none');
       }
 
-      // チャットルームを取得または作成
       const user1 = userId < chatId ? userId : chatId;
       const user2 = userId < chatId ? chatId : userId;
 
@@ -155,7 +176,6 @@ export default function ChatRoomScreen() {
         .single();
 
       if (!chat) {
-        // チャットルームが存在しない場合は作成
         const { data: newChat, error } = await supabase
           .from('chats')
           .insert([{ user1_id: user1, user2_id: user2, is_matched: myLike && theirLike }])
@@ -186,7 +206,6 @@ export default function ChatRoomScreen() {
     } else {
       setMessages(data || []);
       
-      // 未読メッセージを既読にする
       const unreadMessages = data?.filter(m => m.sender_id !== userId && !m.is_read) || [];
       for (const msg of unreadMessages) {
         await markAsRead(msg.id);
@@ -205,13 +224,115 @@ export default function ChatRoomScreen() {
       .eq('id', messageId);
   };
 
+  const pickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('エラー', '写真ライブラリへのアクセス権限が必要です');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        await sendImage(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      console.error('Image picker error:', error);
+      Alert.alert('エラー', '画像の選択に失敗しました');
+    }
+  };
+
+  const sendImage = async (uri: string) => {
+    if (!userId || !actualChatId) return;
+
+    try {
+      setUploading(true);
+
+      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${actualChatId}/${Date.now()}.${fileExt}`;
+
+      let uploadData, uploadError;
+
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        
+        const result = await supabase.storage
+          .from('chat-images')
+          .upload(fileName, blob, { 
+            upsert: false,
+            contentType: `image/${fileExt}`
+          });
+        
+        uploadData = result.data;
+        uploadError = result.error;
+      } else {
+        const formData = new FormData();
+        formData.append('file', {
+          uri: uri,
+          type: `image/${fileExt}`,
+          name: fileName,
+        } as any);
+
+        const result = await supabase.storage
+          .from('chat-images')
+          .upload(fileName, formData, { 
+            upsert: false,
+            contentType: `image/${fileExt}`
+          });
+        
+        uploadData = result.data;
+        uploadError = result.error;
+      }
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('chat-images')
+        .getPublicUrl(fileName);
+
+      // 画像URLをメッセージとして送信
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([{ 
+          chat_id: actualChatId, 
+          content: '[画像]',
+          image_url: urlData.publicUrl,
+          sender_id: userId,
+          is_read: false 
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setMessages(prev => [...prev, data]);
+      
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+
+    } catch (err: any) {
+      console.error('Image upload error:', err);
+      Alert.alert('エラー', '画像の送信に失敗しました');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || !userId || !actualChatId) return;
 
     const messageContent = input.trim();
-    setInput(''); // すぐに入力欄をクリア
+    setInput('');
 
-    // 一時的なメッセージをローカルに追加（送信中表示）
     const tempId = `temp-${Date.now()}`;
     const tempMessage: Message = {
       id: tempId,
@@ -228,7 +349,6 @@ export default function ChatRoomScreen() {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 50);
 
-    // DBに送信
     const { data, error } = await supabase
       .from('messages')
       .insert([{ 
@@ -242,10 +362,8 @@ export default function ChatRoomScreen() {
 
     if (error) {
       console.log('メッセージ送信エラー:', error);
-      // エラー時は一時メッセージを削除
       setMessages(prev => prev.filter(m => m.id !== tempId));
     }
-    // 👇 成功時は何もしない（Realtimeで自動的に本物に置き換わる）
   };
 
   const handleOpenProfile = () => {
@@ -255,19 +373,41 @@ export default function ChatRoomScreen() {
   const renderItem = ({ item }: { item: Message }) => {
     const isMe = item.sender_id === userId;
     return (
-      <View
-        style={[
-          styles.messageContainer,
-          {
-            alignSelf: isMe ? 'flex-end' : 'flex-start',
-            backgroundColor: isMe ? Colors[theme].primary : theme === 'dark' ? '#333' : '#eee',
-          },
-        ]}
-      >
-        <Text style={{ color: isMe ? '#fff' : Colors[theme].text }}>{item.content}</Text>
-        <Text style={[styles.timestamp, { color: isMe ? 'rgba(255,255,255,0.7)' : '#999' }]}>
-          {new Date(item.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-        </Text>
+      <View style={{ alignItems: isMe ? 'flex-end' : 'flex-start', marginVertical: 4 }}>
+        {item.image_url ? (
+          <Pressable 
+            onPress={() => Alert.alert('画像', '画像を表示', [{ text: 'OK' }])}
+            style={[
+              styles.imageMessageContainer,
+              {
+                alignSelf: isMe ? 'flex-end' : 'flex-start',
+              },
+            ]}
+          >
+            <Image 
+              source={{ uri: item.image_url }} 
+              style={styles.messageImage}
+              resizeMode="cover"
+            />
+            <Text style={[styles.timestamp, { color: '#fff', position: 'absolute', bottom: 4, right: 8 }]}>
+              {new Date(item.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </Pressable>
+        ) : (
+          <View
+            style={[
+              styles.messageContainer,
+              {
+                backgroundColor: isMe ? Colors[theme].primary : theme === 'dark' ? '#333' : '#eee',
+              },
+            ]}
+          >
+            <Text style={{ color: isMe ? '#fff' : Colors[theme].text }}>{item.content}</Text>
+            <Text style={[styles.timestamp, { color: isMe ? 'rgba(255,255,255,0.7)' : '#999' }]}>
+              {new Date(item.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
+        )}
       </View>
     );
   };
@@ -284,7 +424,7 @@ export default function ChatRoomScreen() {
           headerShown: true,
           headerBackTitle: '戻る',
           headerStyle: {
-            backgroundColor: Colors[theme].background, // 👈 追加
+            backgroundColor: Colors[theme].background,
           },
           headerLeft: () => (
             <Pressable onPress={() => router.back()} style={{ marginRight: 16 }}>
@@ -293,9 +433,13 @@ export default function ChatRoomScreen() {
           ),
           headerTitle: () => (
             <Pressable onPress={handleOpenProfile} style={styles.headerTitle}>
-              <View style={[styles.headerAvatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
-                <Ionicons name="person" size={20} color="#999" />
-              </View>
+              {otherUserImageUrl ? (
+                <Image source={{ uri: otherUserImageUrl }} style={styles.headerAvatar} />
+              ) : (
+                <View style={[styles.headerAvatar, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#e0e0e0' }]}>
+                  <Ionicons name="person" size={20} color="#999" />
+                </View>
+              )}
               <View>
                 <Text style={[styles.headerName, { color: Colors[theme].text }]}>
                   {otherUsername}
@@ -314,8 +458,8 @@ export default function ChatRoomScreen() {
       />
       <KeyboardAvoidingView
         style={[styles.container, { backgroundColor: Colors[theme].background }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
       >
         {matchStatus !== 'matched' && (
           <View style={[styles.warningBanner, { backgroundColor: theme === 'dark' ? '#3a3a00' : '#fff3cd' }]}>
@@ -336,6 +480,13 @@ export default function ChatRoomScreen() {
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
         />
         <View style={[styles.inputContainer, { borderTopColor: theme === 'dark' ? '#333' : '#eee' }]}>
+          <Pressable
+            onPress={pickImage}
+            style={[styles.imageButton, { backgroundColor: theme === 'dark' ? '#2a2a2a' : '#f5f5f5' }]}
+            disabled={uploading}
+          >
+            <Ionicons name="image" size={24} color={uploading ? '#999' : Colors[theme].primary} />
+          </Pressable>
           <TextInput
             style={[
               styles.input,
@@ -364,7 +515,9 @@ export default function ChatRoomScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { 
+    flex: 1 
+  },
   headerTitle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -401,6 +554,17 @@ const styles = StyleSheet.create({
     marginVertical: 4, 
     maxWidth: '75%' 
   },
+  imageMessageContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    maxWidth: '75%',
+    position: 'relative',
+  },
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+  },
   timestamp: {
     fontSize: 10,
     marginTop: 4,
@@ -411,6 +575,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 8,
     borderTopWidth: 1,
+  },
+  imageButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   input: { 
     flex: 1, 
